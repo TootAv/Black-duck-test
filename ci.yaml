@@ -1,0 +1,50 @@
+name: Publish
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+env:
+  CHART_REPO_NAME: areion-internal
+
+jobs:
+  publish:
+    name: Publish Docker image
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Bump version and push tag
+        id: tag_version
+        uses: mathieudutour/github-tag-action@v5.5
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          release_branches: main
+          tag_prefix: v
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Build Image
+        run: make docker-build
+        env:
+          APP_VERSION: ${{ steps.tag_version.outputs.new_version }}
+          DOCKERREPO: ${{ steps.login-ecr.outputs.registry }}
+          PROJECT: ${{ github.event.repository.name }}
+
+      - name: Push Image
+        run: make docker-push
+        env:
+          DOCKERREPO: ${{ steps.login-ecr.outputs.registry }}
+          PROJECT: ${{ github.event.repository.name }}
